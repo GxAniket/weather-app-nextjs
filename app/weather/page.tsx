@@ -1,682 +1,416 @@
+
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 
-type CurrentWeather = {
-  name: string;
-  sys: {
-    country: string;
-  };
-  main: {
-    temp: number;
-    feels_like: number;
-    temp_min: number;
-    temp_max: number;
-    pressure: number;
+type WeatherType = "sunny" | "rainy" | "storm" | "cloudy" | "snow";
+
+const weatherData: Record<
+  WeatherType,
+  {
+    label: string;
+    temperature: number;
+    high: number;
+    low: number;
     humidity: number;
-  };
-  weather: {
-    main: string;
+    wind: number;
+    emoji: string;
     description: string;
-    icon: string;
-  }[];
-  wind: {
-    speed: number;
-    deg: number;
-  };
+    color: string;
+  }
+> = {
+  sunny: {
+    label: "Sunny",
+    temperature: 29,
+    high: 32,
+    low: 22,
+    humidity: 42,
+    wind: 9,
+    emoji: "☀️",
+    description: "A perfect day to go outside",
+    color: "sunny",
+  },
+  rainy: {
+    label: "Light rain",
+    temperature: 22,
+    high: 25,
+    low: 19,
+    humidity: 82,
+    wind: 12,
+    emoji: "🌧️",
+    description: "Don't forget your umbrella",
+    color: "rainy",
+  },
+  storm: {
+    label: "Thunderstorm",
+    temperature: 19,
+    high: 23,
+    low: 17,
+    humidity: 91,
+    wind: 28,
+    emoji: "⛈️",
+    description: "Stay safe and stay indoors",
+    color: "storm",
+  },
+  cloudy: {
+    label: "Partly cloudy",
+    temperature: 24,
+    high: 27,
+    low: 19,
+    humidity: 65,
+    wind: 10,
+    emoji: "☁️",
+    description: "A calm day with soft clouds",
+    color: "cloudy",
+  },
+  snow: {
+    label: "Snowfall",
+    temperature: -2,
+    high: 1,
+    low: -5,
+    humidity: 78,
+    wind: 14,
+    emoji: "❄️",
+    description: "A little winter magic",
+    color: "snow",
+  },
 };
 
-type ForecastItem = {
-  dt: number;
-  dt_txt: string;
-  main: {
-    temp: number;
-  };
-  weather: {
-    main: string;
-    description: string;
-    icon: string;
-  }[];
-};
+const forecast = [
+  { time: "Now", temp: 24, icon: "🌦️" },
+  { time: "3 PM", temp: 23, icon: "🌧️" },
+  { time: "4 PM", temp: 22, icon: "🌧️" },
+  { time: "5 PM", temp: 21, icon: "☁️" },
+  { time: "6 PM", temp: 20, icon: "🌙" },
+];
 
-type WeatherResponse = {
-  current: CurrentWeather;
-  forecast: {
-    list: ForecastItem[];
-  };
-};
-
-function getWeatherEmoji(condition: string) {
-  const value = condition.toLowerCase();
-
-  if (value.includes("thunderstorm")) {
-    return "⛈️";
-  }
-
-  if (value.includes("rain")) {
-    return "🌧️";
-  }
-
-  if (value.includes("drizzle")) {
-    return "🌦️";
-  }
-
-  if (value.includes("snow")) {
-    return "❄️";
-  }
-
-  if (value.includes("cloud")) {
-    return "☁️";
-  }
-
-  if (
-    value.includes("mist") ||
-    value.includes("fog") ||
-    value.includes("haze")
-  ) {
-    return "🌫️";
-  }
-
-  if (value.includes("clear")) {
-    return "☀️";
-  }
-
-  return "🌤️";
-}
-
-function getScene(condition: string) {
-  const value = condition.toLowerCase();
-
-  if (value.includes("thunderstorm")) {
-    return "storm";
-  }
-
-  if (
-    value.includes("rain") ||
-    value.includes("drizzle")
-  ) {
-    return "rainy";
-  }
-
-  if (value.includes("snow")) {
-    return "snow";
-  }
-
-  if (value.includes("clear")) {
-    return "sunny";
-  }
-
-  if (
-    value.includes("cloud") ||
-    value.includes("mist") ||
-    value.includes("fog") ||
-    value.includes("haze")
-  ) {
-    return "cloudy";
-  }
-
-  return "cloudy";
-}
-
-function formatTime(timestamp: number) {
-  return new Date(
-    timestamp * 1000
-  ).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-}
+const days = [
+  { day: "Today", icon: "🌦️", range: "27° / 19°" },
+  { day: "Saturday", icon: "☀️", range: "29° / 21°" },
+  { day: "Sunday", icon: "🌧️", range: "24° / 18°" },
+  { day: "Monday", icon: "☁️", range: "26° / 20°" },
+];
 
 export default function WeatherPage() {
-  const [search, setSearch] = useState("Dehradun");
+  const [city, setCity] = useState("Dehradun");
+  const [search, setSearch] = useState("");
+  const [condition, setCondition] = useState<WeatherType>("rainy");
 
-  const [weather, setWeather] =
-    useState<WeatherResponse | null>(null);
+  const weather = weatherData[condition];
 
-  const [loading, setLoading] = useState(true);
-
-  const [error, setError] = useState("");
-
-  async function loadWeather(city: string) {
-    try {
-      setLoading(true);
-      setError("");
-
-      const response = await fetch(
-        `/api/weather?city=${encodeURIComponent(city)}`
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data?.error ||
-            "Unable to load weather."
-        );
-      }
-
-      setWeather(data);
-    } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Something went wrong."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    loadWeather("Dehradun");
-  }, []);
-
-  function handleSearch(event: FormEvent) {
+  function handleSearch(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const city = search.trim();
+    const value = search.trim();
 
-    if (!city) {
-      return;
+    if (value) {
+      setCity(value);
+      setSearch("");
     }
-
-    loadWeather(city);
   }
-
-  if (loading && !weather) {
-    return (
-      <main className="weather-page">
-        <div className="weather-wrapper">
-          <div className="weather-app flex items-center justify-center">
-            <div className="text-center">
-
-              <div className="text-6xl animate-pulse">
-                🌦️
-              </div>
-
-              <p className="mt-4 text-white/70">
-                Getting weather...
-              </p>
-
-            </div>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  if (!weather) {
-    return (
-      <main className="weather-page">
-        <div className="weather-wrapper">
-          <div className="weather-app flex items-center justify-center px-8">
-
-            <div className="text-center">
-
-              <div className="text-5xl">
-                🌧️
-              </div>
-
-              <h1 className="mt-5 text-2xl font-bold">
-                Weather unavailable
-              </h1>
-
-              <p className="mt-3 text-sm text-white/60">
-                {error || "Please try again."}
-              </p>
-
-              <button
-                onClick={() => loadWeather("Dehradun")}
-                className="mt-6 rounded-full bg-[#ffd21f] px-6 py-3 font-bold text-[#172554]"
-              >
-                Try Again
-              </button>
-
-            </div>
-
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  const current = weather.current;
-
-  const condition =
-    current.weather?.[0]?.main || "Clouds";
-
-  const description =
-    current.weather?.[0]?.description ||
-    "Weather";
-
-  const scene = getScene(condition);
-
-  const emoji = getWeatherEmoji(condition);
-
-  const forecast =
-    weather.forecast?.list?.slice(0, 4) || [];
 
   return (
-    <main className="weather-page">
+    <main className={`dashboard-page ${condition}`}>
+      <div className="dashboard-shell">
+        <header className="dashboard-header">
+          <Link href="/" className="brand">
+            <span className="brand-icon">☀</span>
+            <span>weatherly<span className="brand-dot">.</span></span>
+          </Link>
 
-      <div className="weather-wrapper">
+          <div className="header-actions">
+            <span className="live-indicator">
+              <span />
+              DEMO MODE
+            </span>
+            <Link href="/" className="back-button" aria-label="Back to home">
+              ↗
+            </Link>
+          </div>
+        </header>
 
-        <div className={`weather-app ${scene}`}>
-
-          {/* =====================================
-              BACKGROUND
-          ===================================== */}
-
-          <div className="weather-background">
-
-            <div className="cloud cloud-one" />
-
-            <div className="cloud cloud-two" />
-
-            {scene === "rainy" && (
-              <>
-                <div className="rain rain-1" />
-                <div className="rain rain-2" />
-                <div className="rain rain-3" />
-                <div className="rain rain-4" />
-                <div className="rain rain-5" />
-                <div className="rain rain-6" />
-                <div className="rain rain-7" />
-                <div className="rain rain-8" />
-                <div className="rain rain-9" />
-                <div className="rain rain-10" />
-                <div className="rain rain-11" />
-                <div className="rain rain-12" />
-                <div className="rain rain-13" />
-                <div className="rain rain-14" />
-              </>
-            )}
-
+        <section className="welcome-section">
+          <div>
+            <p className="eyebrow">YOUR PERSONAL WEATHER SPACE</p>
+            <h1>
+              Good day,
+              <br />
+              <span>explorer.</span>
+            </h1>
+            <p className="welcome-copy">
+              Discover what the sky has planned for you.
+            </p>
           </div>
 
-          {/* =====================================
-              HEADER
-          ===================================== */}
+          <div className="date-pill">
+            <span>📅</span> Your daily forecast
+          </div>
+        </section>
 
-          <header className="weather-header">
+        <form className="city-search" onSubmit={handleSearch}>
+          <span className="search-icon">⌕</span>
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search any city..."
+            aria-label="Search city"
+          />
+          <button type="submit">Search <span>→</span></button>
+        </form>
 
-            <Link
-              href="/"
-              className="icon-button"
-            >
-              ←
-            </Link>
-
-            <div className="header-title">
-              Weatherly
-            </div>
-
-            <button
-              type="button"
-              className="icon-button"
-            >
-              ☰
-            </button>
-
-          </header>
-
-          {/* =====================================
-              SEARCH
-          ===================================== */}
-
-          <form
-            onSubmit={handleSearch}
-            className="relative z-20 mx-5 mt-4"
-          >
-
-            <div
-              className="
-                flex
-                h-11
-                items-center
-                rounded-full
-                border
-                border-white/15
-                bg-white/10
-                px-4
-                backdrop-blur-md
-              "
-            >
-
-              <span className="mr-2">
-                🔍
-              </span>
-
-              <input
-                value={search}
-                onChange={(event) =>
-                  setSearch(event.target.value)
-                }
-                placeholder="Search city..."
-                className="
-                  w-full
-                  bg-transparent
-                  text-sm
-                  text-white
-                  outline-none
-                  placeholder:text-white/50
-                "
-              />
-
-              <button
-                type="submit"
-                className="
-                  rounded-full
-                  bg-[#ffd21f]
-                  px-4
-                  py-1.5
-                  text-xs
-                  font-bold
-                  text-[#172554]
-                "
-              >
-                Search
-              </button>
-
-            </div>
-
-          </form>
-
-          {/* Error */}
-
-          {error && (
-            <div
-              className="
-                relative
-                z-20
-                mx-5
-                mt-3
-                rounded-xl
-                bg-red-500/20
-                px-4
-                py-3
-                text-center
-                text-xs
-                text-red-100
-              "
-            >
-              {error}
-            </div>
-          )}
-
-          {/* =====================================
-              LOCATION
-          ===================================== */}
-
-          <section className="location-section">
-
-            <div className="location">
-
-              <span className="location-pin">
-                📍
-              </span>
-
-              <span>
-                {current.name}, {current.sys.country}
-              </span>
-
-            </div>
-
-            <p className="updated">
-              Real-time weather
-            </p>
-
-          </section>
-
-          {/* =====================================
-              WEATHER
-          ===================================== */}
-
-          <section className="current-weather">
-
-            <div className="weather-icon">
-              {emoji}
-            </div>
-
-            <div className="temperature">
-              {Math.round(current.main.temp)}°
-            </div>
-
-            <div className="condition">
-              {description}
-            </div>
-
-            <div className="temperature-range">
-              Max: {Math.round(current.main.temp_max)}°
-              &nbsp;&nbsp;
-              Min: {Math.round(current.main.temp_min)}°
-            </div>
-
-          </section>
-
-          {/* =====================================
-              WEATHER SCENE
-          ===================================== */}
-
-          <section className="scene-container">
-
-            <div className="ground" />
-
-            {/* House */}
-
-            <div className="house">
-
-              <div className="house-roof" />
-
-              <div className="house-body">
-
-                <div className="house-door">
-                  <div className="door-handle" />
-                </div>
-
-                <div className="house-window window-left">
-                  <span />
-                  <span />
-                </div>
-
-                <div className="house-window window-right">
-                  <span />
-                  <span />
-                </div>
-
+        <section className="weather-layout">
+          <div className="main-weather-card">
+            <div className="weather-card-top">
+              <div>
+                <p className="eyebrow">CURRENT WEATHER</p>
+                <h2>📍 {city}</h2>
+                <p className="country-label">Uttarakhand · India</p>
               </div>
 
-              <div className="chimney" />
-
+              <span className="weather-condition-badge">
+                {weather.emoji} {weather.label}
+              </span>
             </div>
 
-            {/* Person */}
-
-            <div className="person">
-
-              <div className="person-head" />
-
-              <div className="person-body">
-
-                {scene === "rainy" && (
-                  <div className="umbrella">
-
-                    <div className="umbrella-top" />
-
-                    <div className="umbrella-stick" />
-
-                    <div className="umbrella-handle" />
-
-                  </div>
-                )}
-
-                {scene === "sunny" && (
-                  <div className="sunglasses">
-                    😎
-                  </div>
-                )}
-
-                {scene === "storm" && (
-                  <div className="storm-alert">
-                    ⚡
-                  </div>
-                )}
-
+            <div className="temperature-row">
+              <div>
+                <div className="big-temperature">
+                  {weather.temperature}°
+                </div>
+                <p className="feels-like">
+                  H: {weather.high}° <span>·</span> L: {weather.low}°
+                </p>
+                <p className="weather-description">{weather.description}</p>
               </div>
 
-              <div className="person-leg person-leg-left" />
-
-              <div className="person-leg person-leg-right" />
-
+              <div className="large-weather-icon" aria-hidden="true">
+                {weather.emoji}
+              </div>
             </div>
 
-            {/* Bushes */}
+            <div className="scene-panel">
+              <div className="scene-heading">
+                <span>YOUR WEATHER WORLD</span>
+                <span className="scene-live">
+                  <span /> ANIMATED
+                </span>
+              </div>
 
-            <div className="bush bush-one" />
+              <div className="scene-landscape">
+                <div className="scene-sun" />
+                <div className="scene-cloud scene-cloud-one" />
+                <div className="scene-cloud scene-cloud-two" />
 
-            <div className="bush bush-two" />
+                {condition === "rainy" && (
+                  <div className="scene-rain">
+                    {Array.from({ length: 24 }, (_, i) => (
+                      <span
+                        key={i}
+                        style={{
+                          left: `${(i * 37) % 100}%`,
+                          animationDelay: `${(i % 8) * -0.23}s`,
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
 
-          </section>
+                {condition === "snow" && (
+                  <div className="scene-snow">
+                    {Array.from({ length: 22 }, (_, i) => (
+                      <span
+                        key={i}
+                        style={{
+                          left: `${(i * 31) % 100}%`,
+                          animationDelay: `${(i % 7) * -0.5}s`,
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
 
-          {/* =====================================
-              FORECAST
-          ===================================== */}
+                {condition === "storm" && <div className="scene-lightning">ϟ</div>}
 
-          <section className="forecast-section">
+                <div className="scene-hill scene-hill-back" />
+                <div className="scene-hill scene-hill-front" />
+                <div className="scene-ground" />
 
-            <div className="forecast-header">
+                <div className="scene-house">
+                  <div className="house-chimney" />
+                  <div className="house-roof" />
+                  <div className="house-wall">
+                    <div className="house-window">
+                      <span />
+                      <span />
+                    </div>
+                    <div className="house-door">
+                      <span />
+                    </div>
+                  </div>
+                </div>
 
-              <span>
-                Today
-              </span>
-
-              <span>
-                {condition}
-              </span>
-
-            </div>
-
-            <div className="forecast-list">
-
-              {forecast.map((item) => (
-
-                <div
-                  className="forecast-item"
-                  key={item.dt}
-                >
-
-                  <span>
-                    {formatTime(item.dt)}
-                  </span>
-
-                  <span className="forecast-icon">
-                    {getWeatherEmoji(
-                      item.weather[0]?.main || "Clouds"
+                <div className={`scene-person person-${condition}`}>
+                  <div className="person-head">
+                    {condition === "sunny" && (
+                      <span className="person-sunglasses">▰▰</span>
                     )}
-                  </span>
+                  </div>
+                  <div className="person-body" />
+                  <div className="person-arm person-arm-left" />
+                  <div className="person-arm person-arm-right" />
+                  <div className="person-leg person-leg-left" />
+                  <div className="person-leg person-leg-right" />
 
-                  <strong>
-                    {Math.round(item.main.temp)}°
-                  </strong>
+                  {condition === "rainy" && (
+                    <div className="person-umbrella">
+                      <div className="umbrella-canopy" />
+                      <div className="umbrella-shaft" />
+                    </div>
+                  )}
 
+                  {condition === "storm" && (
+                    <span className="person-alert">!</span>
+                  )}
+
+                  {condition === "snow" && (
+                    <span className="person-scarf" />
+                  )}
                 </div>
 
-              ))}
+                <div className="scene-bush scene-bush-one" />
+                <div className="scene-bush scene-bush-two" />
 
+                <div className="scene-caption">
+                  {condition === "rainy" && "Grab your umbrella!"}
+                  {condition === "sunny" && "Let's enjoy the sunshine!"}
+                  {condition === "storm" && "Quick, get back inside!"}
+                  {condition === "cloudy" && "A peaceful day outside."}
+                  {condition === "snow" && "It's a winter wonderland!"}
+                </div>
+              </div>
             </div>
 
-          </section>
+            <div className="scene-controls">
+              <p>PREVIEW WEATHER</p>
+              <div className="condition-options">
+                {(
+                  [
+                    ["sunny", "☀️", "Sunny"],
+                    ["rainy", "🌧️", "Rain"],
+                    ["storm", "⛈️", "Storm"],
+                    ["cloudy", "☁️", "Cloudy"],
+                    ["snow", "❄️", "Snow"],
+                  ] as const
+                ).map(([value, icon, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setCondition(value)}
+                    className={
+                      condition === value
+                        ? "condition-option selected"
+                        : "condition-option"
+                    }
+                    aria-pressed={condition === value}
+                  >
+                    <span>{icon}</span>
+                    <small>{label}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
 
-          {/* =====================================
-              STATS
-          ===================================== */}
-
-          <section className="stats">
-
-            <div className="stat-card">
-
-              <span className="stat-icon">
-                💧
-              </span>
-
-              <div>
-
-                <span>
-                  Humidity
-                </span>
-
-                <strong>
-                  {current.main.humidity}%
-                </strong>
-
+          <aside className="weather-sidebar">
+            <section className="details-card">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">THE DETAILS</p>
+                  <h3>Weather insights</h3>
+                </div>
+                <span className="heading-sparkle">✳</span>
               </div>
 
-            </div>
-
-            <div className="stat-card">
-
-              <span className="stat-icon">
-                💨
-              </span>
-
-              <div>
-
-                <span>
-                  Wind
-                </span>
-
-                <strong>
-                  {Math.round(
-                    current.wind.speed * 3.6
-                  )} km/h
-                </strong>
-
+              <div className="detail-row">
+                <div className="detail-icon humidity-icon">♧</div>
+                <div className="detail-label">
+                  <span>Humidity</span>
+                  <small>Air moisture</small>
+                </div>
+                <strong>{weather.humidity}%</strong>
               </div>
 
+              <div className="detail-row">
+                <div className="detail-icon wind-icon">≋</div>
+                <div className="detail-label">
+                  <span>Wind speed</span>
+                  <small>Gentle breeze</small>
+                </div>
+                <strong>{weather.wind} <small>km/h</small></strong>
+              </div>
+
+              <div className="detail-row">
+                <div className="detail-icon sun-icon">☼</div>
+                <div className="detail-label">
+                  <span>UV index</span>
+                  <small>Sun intensity</small>
+                </div>
+                <strong>4 <small>/ 11</small></strong>
+              </div>
+            </section>
+
+            <section className="hourly-card">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">THE NEXT HOURS</p>
+                  <h3>Today's forecast</h3>
+                </div>
+                <span className="heading-sparkle">↗</span>
+              </div>
+
+              <div className="hourly-list">
+                {forecast.map((item, index) => (
+                  <div className="hourly-item" key={item.time}>
+                    <span>{item.time}</span>
+                    <span className="hourly-emoji">{item.icon}</span>
+                    <strong>{item.temp}°</strong>
+                    <div className="hourly-bar">
+                      <span style={{ width: `${90 - index * 12}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </aside>
+        </section>
+
+        <section className="weekly-section">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">PLAN AHEAD</p>
+              <h3>The week ahead</h3>
             </div>
+            <span className="week-label">4-DAY PREVIEW</span>
+          </div>
 
-          </section>
+          <div className="weekly-grid">
+            {days.map((day) => (
+              <div className="weekly-card" key={day.day}>
+                <span className="weekly-day">{day.day}</span>
+                <span className="weekly-emoji">{day.icon}</span>
+                <strong>{day.range}</strong>
+              </div>
+            ))}
+          </div>
+        </section>
 
-          {/* =====================================
-              NAV
-          ===================================== */}
-
-          <nav className="bottom-nav">
-
-            <button
-              type="button"
-              className="nav-item active"
-            >
-              <span>⌂</span>
-              <small>Home</small>
-            </button>
-
-            <button
-              type="button"
-              className="add-button"
-              onClick={() => {
-                setSearch("");
-              }}
-            >
-              +
-            </button>
-
-            <button
-              type="button"
-              className="nav-item"
-            >
-              <span>☰</span>
-              <small>Forecast</small>
-            </button>
-
-          </nav>
-
-        </div>
-
+        <footer className="dashboard-footer">
+          <Link href="/" className="footer-brand">weatherly.</Link>
+          <span>Every day has its own atmosphere.</span>
+          <span className="demo-tag">MOCK DATA · NOT LIVE</span>
+        </footer>
       </div>
-
     </main>
   );
 }
